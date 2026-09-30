@@ -137,9 +137,12 @@ workflows:
       - name: Install Zig
         script: |
           set -euo pipefail
-          curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-macos-aarch64-${ZIG_VERSION}.tar.xz" -o "$CM_BUILD_DIR/zig.tar.xz"
-          tar -xJf "$CM_BUILD_DIR/zig.tar.xz" -C "$CM_BUILD_DIR"
-          ZIGDIR="$CM_BUILD_DIR/zig-macos-aarch64-${ZIG_VERSION}"
+          ZIG_URL="$(curl -fsSL https://ziglang.org/download/index.json | python3 -c "import json,sys; print(json.load(sys.stdin)['${ZIG_VERSION}']['aarch64-macos']['tarball'])")"
+          echo "Zig tarball: $ZIG_URL"
+          curl -fsSL "$ZIG_URL" -o "$CM_BUILD_DIR/zig.tar.xz"
+          mkdir -p "$CM_BUILD_DIR/zig"
+          tar -xf "$CM_BUILD_DIR/zig.tar.xz" -C "$CM_BUILD_DIR/zig"
+          ZIGDIR="$(echo "$CM_BUILD_DIR/zig"/zig-*)"
           echo "PATH=$ZIGDIR:$PATH" >> "$CM_ENV"
           "$ZIGDIR/zig" version
       - name: JS dependencies (sdk)
@@ -225,9 +228,12 @@ workflows:
       - name: Install Zig
         script: |
           set -euo pipefail
-          curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-macos-aarch64-${ZIG_VERSION}.tar.xz" -o "$CM_BUILD_DIR/zig.tar.xz"
-          tar -xJf "$CM_BUILD_DIR/zig.tar.xz" -C "$CM_BUILD_DIR"
-          ZIGDIR="$CM_BUILD_DIR/zig-macos-aarch64-${ZIG_VERSION}"
+          ZIG_URL="$(curl -fsSL https://ziglang.org/download/index.json | python3 -c "import json,sys; print(json.load(sys.stdin)['${ZIG_VERSION}']['aarch64-macos']['tarball'])")"
+          echo "Zig tarball: $ZIG_URL"
+          curl -fsSL "$ZIG_URL" -o "$CM_BUILD_DIR/zig.tar.xz"
+          mkdir -p "$CM_BUILD_DIR/zig"
+          tar -xf "$CM_BUILD_DIR/zig.tar.xz" -C "$CM_BUILD_DIR/zig"
+          ZIGDIR="$(echo "$CM_BUILD_DIR/zig"/zig-*)"
           echo "PATH=$ZIGDIR:$PATH" >> "$CM_ENV"
           "$ZIGDIR/zig" version
       - name: JS dependencies (sdk and wasmer-sh)
