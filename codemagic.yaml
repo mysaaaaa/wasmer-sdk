@@ -29,6 +29,7 @@ workflows:
       cache_paths:
         - ~/.cargo/bin
         - ~/.cargo/registry
+        - ~/.rustup
         - js/node_modules
     scripts:
       - name: Submodules
@@ -36,6 +37,11 @@ workflows:
       - name: Rust nightly and wasm-bindgen
         script: |
           set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          echo "PATH=$HOME/.cargo/bin:$PATH" >> "$CM_ENV"
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl -sSfL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain nightly -c rust-src -t wasm32-unknown-unknown
+          fi
           rustup toolchain install nightly --profile minimal --component rust-src --target wasm32-unknown-unknown --no-self-update
           if ! wasm-bindgen --version 2>/dev/null | grep -qx "wasm-bindgen $WASM_BINDGEN_VERSION"; then
             cargo +nightly install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked --force
@@ -87,6 +93,7 @@ workflows:
       cache_paths:
         - ~/.cargo/bin
         - ~/.cargo/registry
+        - ~/.rustup
         - swift/Examples/WasmerShell/.build
         - js/node_modules
     scripts:
@@ -118,6 +125,11 @@ workflows:
       - name: Rust nightly and wasm-bindgen
         script: |
           set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          echo "PATH=$HOME/.cargo/bin:$PATH" >> "$CM_ENV"
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl -sSfL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain nightly -c rust-src -t wasm32-unknown-unknown
+          fi
           rustup toolchain install nightly --profile minimal --component rust-src --target wasm32-unknown-unknown --no-self-update
           if ! wasm-bindgen --version 2>/dev/null | grep -qx "wasm-bindgen $WASM_BINDGEN_VERSION"; then
             cargo +nightly install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked --force
@@ -168,6 +180,7 @@ workflows:
       cache_paths:
         - ~/.cargo/bin
         - ~/.cargo/registry
+        - ~/.rustup
         - swift/Examples/WasmerShell/.build
         - js/node_modules
         - wasmer-sh/node_modules
@@ -200,6 +213,11 @@ workflows:
       - name: Rust nightly and wasm-bindgen
         script: |
           set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          echo "PATH=$HOME/.cargo/bin:$PATH" >> "$CM_ENV"
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl -sSfL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain nightly -c rust-src -t wasm32-unknown-unknown
+          fi
           rustup toolchain install nightly --profile minimal --component rust-src --target wasm32-unknown-unknown --no-self-update
           if ! wasm-bindgen --version 2>/dev/null | grep -qx "wasm-bindgen $WASM_BINDGEN_VERSION"; then
             cargo +nightly install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked --force
