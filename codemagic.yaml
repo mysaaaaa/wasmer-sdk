@@ -137,9 +137,10 @@ workflows:
       - name: Install Zig
         script: |
           set -euo pipefail
-          ZIG_URL="$(curl -fsSL https://ziglang.org/download/index.json | python3 -c "import json,sys; print(json.load(sys.stdin)['${ZIG_VERSION}']['aarch64-macos']['tarball'])")"
+          ZIG_URL="$(curl -fsSL --connect-timeout 20 --retry 3 https://ziglang.org/download/index.json | python3 -c "import json,sys; print(json.load(sys.stdin)['${ZIG_VERSION}']['aarch64-macos']['tarball'])")"
           echo "Zig tarball: $ZIG_URL"
-          curl -fsSL "$ZIG_URL" -o "$CM_BUILD_DIR/zig.tar.xz"
+          curl -fSL --connect-timeout 20 --retry 5 --retry-delay 5 --retry-all-errors --speed-limit 10240 --speed-time 60 "$ZIG_URL" -o "$CM_BUILD_DIR/zig.tar.xz"
+          test "$(stat -f%z "$CM_BUILD_DIR/zig.tar.xz")" -gt 40000000
           mkdir -p "$CM_BUILD_DIR/zig"
           tar -xf "$CM_BUILD_DIR/zig.tar.xz" -C "$CM_BUILD_DIR/zig"
           ZIGDIR="$(echo "$CM_BUILD_DIR/zig"/zig-*)"
@@ -241,9 +242,10 @@ workflows:
       - name: Install Zig
         script: |
           set -euo pipefail
-          ZIG_URL="$(curl -fsSL https://ziglang.org/download/index.json | python3 -c "import json,sys; print(json.load(sys.stdin)['${ZIG_VERSION}']['aarch64-macos']['tarball'])")"
+          ZIG_URL="$(curl -fsSL --connect-timeout 20 --retry 3 https://ziglang.org/download/index.json | python3 -c "import json,sys; print(json.load(sys.stdin)['${ZIG_VERSION}']['aarch64-macos']['tarball'])")"
           echo "Zig tarball: $ZIG_URL"
-          curl -fsSL "$ZIG_URL" -o "$CM_BUILD_DIR/zig.tar.xz"
+          curl -fSL --connect-timeout 20 --retry 5 --retry-delay 5 --retry-all-errors --speed-limit 10240 --speed-time 60 "$ZIG_URL" -o "$CM_BUILD_DIR/zig.tar.xz"
+          test "$(stat -f%z "$CM_BUILD_DIR/zig.tar.xz")" -gt 40000000
           mkdir -p "$CM_BUILD_DIR/zig"
           tar -xf "$CM_BUILD_DIR/zig.tar.xz" -C "$CM_BUILD_DIR/zig"
           ZIGDIR="$(echo "$CM_BUILD_DIR/zig"/zig-*)"
