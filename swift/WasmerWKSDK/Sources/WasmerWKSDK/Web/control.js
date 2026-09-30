@@ -61,7 +61,19 @@ worker.onmessage = async ({ data }) => {
     } else {
       // Flush the final progress message before settling the Swift await.
       await entry.progress;
-      if (!entry.cancelled) entry.resolve(data);
+      if (!entry.cancelled) {
+        entry.resolve(data);
+        // Native reads replies through the message bridge: marshalling
+        // callAsyncJavaScript return values fails on some WebKit builds
+        // ("JavaScript execution returned a result of an unsupported type").
+        let json;
+        try {
+          json = JSON.stringify(data, (_k, v) => typeof v === "bigint" ? v.toString() : v);
+        } catch (error) {
+          json = JSON.stringify({ id: data.id, error: { code: "SERIALIZE_ERROR", message: String(error) } });
+        }
+        void native.postMessage({ kind: "rpcReply", id: data.id, json }).catch(() => {});
+      }
     }
     pending.delete(data.id);
   }
