@@ -255,7 +255,7 @@ workflows:
         script: |
           set -euo pipefail
           (cd js && npm ci)
-          (cd wasmer-sh && npm ci)
+          (cd wasmer-sh && npm install --no-audit --no-fund)
       - name: Prepare WebKit runtime assets
         script: |
           set -euo pipefail
