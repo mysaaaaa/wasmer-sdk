@@ -124,16 +124,23 @@ final class WebKitTransport: NSObject, WKNavigationDelegate {
         pending[id] = continuation
         Task { @MainActor [weak self] in
           do {
-            // Deliver only; the reply arrives through the "wasmer" message
-            // bridge (kind: rpcReply). Returning callAsyncJavaScript values
-            // fails on some WebKit builds with an unsupported-type error.
-            _ = try await view.callAsyncJavaScript(
-              "globalThis.wasmerRPC.request(JSON.parse(payload)); return 0;",
+            let value = try await view.callAsyncJavaScript(
+              "return JSON.stringify((await globalThis.wasmerRPC.request(JSON.parse(payload))) ?? null, (_k, v) => typeof v === 'bigint' ? v.toString() : v);",
               arguments: ["payload": json], in: nil, contentWorld: .page)
+            guard let reply = value as? String else {
+              throw SdkError.Failure(code: "INTERNAL_ERROR", message: "Invalid WebKit reply")
+            }
+            if let completion = self?.pending.removeValue(forKey: id) {
+              completion.resume(returning: Data(reply.utf8))
+            } else {
+              // The control page may already have resolved before Swift task
+              // cancellation wins. Release a handle the caller never received.
+              await self?.releaseUnclaimed(method: method, reply: Data(reply.utf8))
+            }
           } catch {
             self?.pending.removeValue(forKey: id)?.resume(
               throwing: SdkError.Failure(
-                code: "EXECUTION_ERROR", message: "delivery \(method): \(error.localizedDescription)"))
+                code: "EXECUTION_ERROR", message: "\(method): \(error.localizedDescription)"))
           }
         }
       }
@@ -272,13 +279,6 @@ final class WebKitTransport: NSObject, WKNavigationDelegate {
          let progress = try? JSONDecoder().decode(PackageLoadProgress.self, from: data) {
         observer(progress)
       }
-      reply(true, nil)
-    case "rpcReply":
-      guard let id = body["id"] as? String, let json = body["json"] as? String else {
-        reply(nil, "Invalid rpcReply message")
-        return
-      }
-      pending.removeValue(forKey: id)?.resume(returning: Data(json.utf8))
       reply(true, nil)
     case "progress": reply(true, nil)
     default: reply(nil, "Unknown runtime message")
