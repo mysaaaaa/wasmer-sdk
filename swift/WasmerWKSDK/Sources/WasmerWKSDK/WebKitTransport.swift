@@ -125,7 +125,7 @@ final class WebKitTransport: NSObject, WKNavigationDelegate {
         Task { @MainActor [weak self] in
           do {
             let value = try await view.callAsyncJavaScript(
-              "return JSON.stringify((await globalThis.wasmerRPC.request(JSON.parse(payload))) ?? null);",
+              "return JSON.stringify((await globalThis.wasmerRPC.request(JSON.parse(payload))) ?? null, (_k, v) => typeof v === 'bigint' ? v.toString() : v);",
               arguments: ["payload": json], in: nil, contentWorld: .page)
             guard let reply = value as? String else {
               throw SdkError.Failure(code: "INTERNAL_ERROR", message: "Invalid WebKit reply")
