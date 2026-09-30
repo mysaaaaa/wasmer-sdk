@@ -1,0 +1,229 @@
+# Codemagic CI for wasmer-sdk / WasmerShell
+# Put this file at the repository ROOT as codemagic.yaml
+# (GitHub Actions version: wasmershell-ipa.yml in the same folder)
+#
+# Workflows:
+#   1. pi-0-99-1-validation  (Linux) — bump Pi pins to 0.99.1, build the WebC
+#      and run the full local-fixture test suite. Cheapest, most informative:
+#      run this FIRST.
+#   2. wasmershell-ipa       (macOS) — cross-compile the device app and package
+#      WasmerShell.ipa (ad-hoc signed; re-sign with your own certificate).
+#   3. pi-simulator-test     (macOS) — headless Pi integration test on the iOS
+#      27 simulator (uses the registry's wasmer/pi@=0.87.1).
+#
+# Trigger a single workflow from the Codemagic UI: "Start new build" ->
+# select the workflow from the dropdown.
+
+workflows:
+  pi-0-99-1-validation:
+    name: Pi 0.99.1 WebC validation
+    instance_type: linux
+    max_build_duration: 120
+    environment:
+      node: 24
+      vars:
+        PI_OLD: "0.87.1"
+        PI_NEW: "0.99.1"
+        WASM_BINDGEN_VERSION: "0.2.126"
+    cache:
+      cache_paths:
+        - ~/.cargo/bin
+        - ~/.cargo/registry
+        - js/node_modules
+    scripts:
+      - name: Submodules
+        script: git submodule update --init --recursive
+      - name: Rust nightly and wasm-bindgen
+        script: |
+          set -euo pipefail
+          rustup toolchain install nightly --profile minimal --component rust-src --target wasm32-unknown-unknown --no-self-update
+          if ! wasm-bindgen --version 2>/dev/null | grep -qx "wasm-bindgen $WASM_BINDGEN_VERSION"; then
+            cargo +nightly install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked --force
+          fi
+      - name: Bump Pi pins to 0.99.1
+        script: |
+          set -euo pipefail
+          cd packages/pi
+          sed -i "s/\"version\": \"$PI_OLD\"/\"version\": \"$PI_NEW\"/" package.json
+          sed -i "s/\"@earendil-works\/pi-coding-agent\": \"$PI_OLD\"/\"@earendil-works\/pi-coding-agent\": \"$PI_NEW\"/" package.json
+          sed -i "s/version = \"$PI_OLD\"/version = \"$PI_NEW\"/" wasmer.toml
+          sed -i "s/pi-$PI_OLD.webc/pi-$PI_NEW.webc/" build.sh
+          grep -n "$PI_NEW" package.json wasmer.toml build.sh
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Install Wasmer CLI
+        script: |
+          set -euo pipefail
+          curl -sSfL https://get.wasmer.io | sh
+          echo "PATH=$HOME/.wasmer/bin:$PATH" >> "$CM_ENV"
+      - name: Build Pi 0.99.1 WebC
+        script: |
+          set -euo pipefail
+          bash packages/pi/build.sh "target/pi-$PI_NEW.webc"
+          ls -lh "target/pi-$PI_NEW.webc"
+      - name: Build the JS SDK
+        script: |
+          set -euo pipefail
+          cd js
+          npm ci
+          npm run build
+      - name: Run the full Pi test suite against the new WebC
+        script: |
+          set -euo pipefail
+          WASMER_PI_SDK="$PWD/js/dist/node.js" node packages/pi/test-sdk.mjs "target/pi-$PI_NEW.webc"
+    artifacts:
+      - target/pi-0.99.1.webc
+
+  wasmershell-ipa:
+    name: WasmerShell device IPA
+    instance_type: mac_mini_m2
+    max_build_duration: 150
+    environment:
+      xcode: latest
+      node: 24
+      vars:
+        ZIG_VERSION: "0.16.0"
+        WASM_BINDGEN_VERSION: "0.2.126"
+    cache:
+      cache_paths:
+        - ~/.cargo/bin
+        - ~/.cargo/registry
+        - swift/Examples/WasmerShell/.build
+        - js/node_modules
+    scripts:
+      - name: Submodules
+        script: git submodule update --init --recursive
+      - name: Verify an Xcode with the iOS 27 SDK
+        script: |
+          set -euo pipefail
+          xcodebuild -version
+          CUR="$(xcode-select -p)"
+          V="$(DEVELOPER_DIR="$CUR" xcrun --sdk iphoneos --show-sdk-version 2>/dev/null || true)"
+          if [ -z "$V" ] || [ "${V%%.*}" -lt 27 ]; then
+            for CANDIDATE in /Applications/Xcode*.app; do
+              DD="$CANDIDATE/Contents/Developer"
+              CV="$(DEVELOPER_DIR="$DD" xcrun --sdk iphoneos --show-sdk-version 2>/dev/null || true)"
+              echo "$CANDIDATE -> iphoneos SDK ${CV:-none}"
+              if [ -n "$CV" ] && [ "${CV%%.*}" -ge 27 ]; then
+                sudo xcode-select -s "$DD"
+                V="$CV"
+                break
+              fi
+            done
+          fi
+          if [ -z "$V" ] || [ "${V%%.*}" -lt 27 ]; then
+            echo "ERROR: no Xcode with an iOS 27 (iphoneos) SDK on this machine"
+            exit 1
+          fi
+          echo "Using iphoneos SDK $V"
+      - name: Rust nightly and wasm-bindgen
+        script: |
+          set -euo pipefail
+          rustup toolchain install nightly --profile minimal --component rust-src --target wasm32-unknown-unknown --no-self-update
+          if ! wasm-bindgen --version 2>/dev/null | grep -qx "wasm-bindgen $WASM_BINDGEN_VERSION"; then
+            cargo +nightly install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked --force
+          fi
+      - name: Install Zig
+        script: |
+          set -euo pipefail
+          curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-macos-aarch64-${ZIG_VERSION}.tar.xz" -o "$CM_BUILD_DIR/zig.tar.xz"
+          tar -xJf "$CM_BUILD_DIR/zig.tar.xz" -C "$CM_BUILD_DIR"
+          ZIGDIR="$CM_BUILD_DIR/zig-macos-aarch64-${ZIG_VERSION}"
+          echo "PATH=$ZIGDIR:$PATH" >> "$CM_ENV"
+          "$ZIGDIR/zig" version
+      - name: JS dependencies (sdk)
+        script: |
+          set -euo pipefail
+          cd js && npm ci
+      - name: Prepare WebKit runtime assets
+        script: |
+          set -euo pipefail
+          python3 swift/WasmerWKSDK/scripts/prototype.py prepare --rebuild-wasm
+      - name: Build WasmerShell for device
+        script: |
+          set -euo pipefail
+          python3 swift/Examples/WasmerShell/build.py build --platform device
+      - name: Package IPA
+        script: |
+          set -euo pipefail
+          cd swift/Examples/WasmerShell/Artifacts/device
+          rm -rf Payload WasmerShell.ipa
+          mkdir Payload
+          cp -R WasmerShell.app Payload/
+          zip -qry WasmerShell.ipa Payload
+          ls -lh WasmerShell.ipa
+    artifacts:
+      - swift/Examples/WasmerShell/Artifacts/device/WasmerShell.ipa
+
+  pi-simulator-test:
+    name: Headless Pi simulator test
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    environment:
+      xcode: latest
+      node: 24
+      vars:
+        ZIG_VERSION: "0.16.0"
+        WASM_BINDGEN_VERSION: "0.2.126"
+    cache:
+      cache_paths:
+        - ~/.cargo/bin
+        - ~/.cargo/registry
+        - swift/Examples/WasmerShell/.build
+        - js/node_modules
+        - wasmer-sh/node_modules
+    scripts:
+      - name: Submodules
+        script: git submodule update --init --recursive
+      - name: Verify an Xcode with the iOS 27 simulator SDK
+        script: |
+          set -euo pipefail
+          xcodebuild -version
+          CUR="$(xcode-select -p)"
+          V="$(DEVELOPER_DIR="$CUR" xcrun --sdk iphonesimulator --show-sdk-version 2>/dev/null || true)"
+          if [ -z "$V" ] || [ "${V%%.*}" -lt 27 ]; then
+            for CANDIDATE in /Applications/Xcode*.app; do
+              DD="$CANDIDATE/Contents/Developer"
+              CV="$(DEVELOPER_DIR="$DD" xcrun --sdk iphonesimulator --show-sdk-version 2>/dev/null || true)"
+              echo "$CANDIDATE -> iphonesimulator SDK ${CV:-none}"
+              if [ -n "$CV" ] && [ "${CV%%.*}" -ge 27 ]; then
+                sudo xcode-select -s "$DD"
+                V="$CV"
+                break
+              fi
+            done
+          fi
+          if [ -z "$V" ] || [ "${V%%.*}" -lt 27 ]; then
+            echo "ERROR: no Xcode with an iOS 27 simulator SDK on this machine"
+            exit 1
+          fi
+          echo "Using iphonesimulator SDK $V"
+      - name: Rust nightly and wasm-bindgen
+        script: |
+          set -euo pipefail
+          rustup toolchain install nightly --profile minimal --component rust-src --target wasm32-unknown-unknown --no-self-update
+          if ! wasm-bindgen --version 2>/dev/null | grep -qx "wasm-bindgen $WASM_BINDGEN_VERSION"; then
+            cargo +nightly install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked --force
+          fi
+      - name: Install Zig
+        script: |
+          set -euo pipefail
+          curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-macos-aarch64-${ZIG_VERSION}.tar.xz" -o "$CM_BUILD_DIR/zig.tar.xz"
+          tar -xJf "$CM_BUILD_DIR/zig.tar.xz" -C "$CM_BUILD_DIR"
+          ZIGDIR="$CM_BUILD_DIR/zig-macos-aarch64-${ZIG_VERSION}"
+          echo "PATH=$ZIGDIR:$PATH" >> "$CM_ENV"
+          "$ZIGDIR/zig" version
+      - name: JS dependencies (sdk and wasmer-sh)
+        script: |
+          set -euo pipefail
+          (cd js && npm ci)
+          (cd wasmer-sh && npm ci)
+      - name: Prepare WebKit runtime assets
+        script: |
+          set -euo pipefail
+          python3 swift/WasmerWKSDK/scripts/prototype.py prepare --rebuild-wasm
+      - name: Run the headless Pi integration test
+        script: |
+          set -euo pipefail
+          node swift/Examples/WasmerShell/Tests/pi.mjs
+    artifacts:
+      - swift/Examples/WasmerShell/Artifacts/terminal-result.json
