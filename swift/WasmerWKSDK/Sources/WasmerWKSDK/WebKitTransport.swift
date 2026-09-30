@@ -125,7 +125,7 @@ final class WebKitTransport: NSObject, WKNavigationDelegate {
         Task { @MainActor [weak self] in
           do {
             let value = try await view.callAsyncJavaScript(
-              "return JSON.stringify(await globalThis.wasmerRPC.request(JSON.parse(payload)));",
+              "return JSON.stringify((await globalThis.wasmerRPC.request(JSON.parse(payload))) ?? null);",
               arguments: ["payload": json], in: nil, contentWorld: .page)
             guard let reply = value as? String else {
               throw SdkError.Failure(code: "INTERNAL_ERROR", message: "Invalid WebKit reply")
@@ -140,7 +140,7 @@ final class WebKitTransport: NSObject, WKNavigationDelegate {
           } catch {
             self?.pending.removeValue(forKey: id)?.resume(
               throwing: SdkError.Failure(
-                code: "EXECUTION_ERROR", message: error.localizedDescription))
+                code: "EXECUTION_ERROR", message: "\(method): \(error.localizedDescription)"))
           }
         }
       }
