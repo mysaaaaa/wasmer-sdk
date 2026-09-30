@@ -153,6 +153,19 @@ workflows:
         script: |
           set -euo pipefail
           python3 swift/WasmerWKSDK/scripts/prototype.py prepare --rebuild-wasm
+      - name: Strip macOS-only FFI binary target (avoids keychain lookup on CI)
+        script: |
+          set -euo pipefail
+          python3 - <<'EOF'
+          import re, pathlib
+          p = pathlib.Path("Package.swift")
+          s = p.read_text()
+          s = re.sub(r"\n\s*\.binaryTarget\(name: \"WasmerSDKFFI\"[^)]*\),", "", s, count=1)
+          s = s.replace("dependencies: [.target(name: \"WasmerSDKFFI\", condition: .when(platforms: [.macOS]))],", "dependencies: [],")
+          assert "WasmerSDKFFI" not in s, "FFI strip failed - Package.swift changed upstream"
+          p.write_text(s)
+          print("stripped WasmerSDKFFI binary target (macOS-only, unused for iOS builds)")
+          EOF
       - name: Build WasmerShell for device
         script: |
           set -euo pipefail
@@ -245,6 +258,19 @@ workflows:
         script: |
           set -euo pipefail
           python3 swift/WasmerWKSDK/scripts/prototype.py prepare --rebuild-wasm
+      - name: Strip macOS-only FFI binary target (avoids keychain lookup on CI)
+        script: |
+          set -euo pipefail
+          python3 - <<'EOF'
+          import re, pathlib
+          p = pathlib.Path("Package.swift")
+          s = p.read_text()
+          s = re.sub(r"\n\s*\.binaryTarget\(name: \"WasmerSDKFFI\"[^)]*\),", "", s, count=1)
+          s = s.replace("dependencies: [.target(name: \"WasmerSDKFFI\", condition: .when(platforms: [.macOS]))],", "dependencies: [],")
+          assert "WasmerSDKFFI" not in s, "FFI strip failed - Package.swift changed upstream"
+          p.write_text(s)
+          print("stripped WasmerSDKFFI binary target (macOS-only, unused for iOS builds)")
+          EOF
       - name: Run the headless Pi integration test
         script: |
           set -euo pipefail
